@@ -1,0 +1,17 @@
+{
+    "name": "muralith",
+    "version": "1.0.0",
+    "description": "wallpaper randomizer",
+    "main": "index.js",
+    "author": "Powerleech",
+    "license": "MIT",
+    "private": true,
+    "dependencies": {
+        "axios": "^1.5.0",
+        "cheerio": "^1.0.0-rc.10",
+        "fs": "0.0.1-security",
+        "image-size": "^1.0.2",
+        "minimist": "^1.2.5",
+        "puppeteer": "20.7.3"
+    }
+}
