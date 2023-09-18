@@ -2,12 +2,19 @@
 
 const puppeteer = require('puppeteer');
 const cheerio = require("cheerio")
-const query = "salvador dali painting"
 const axios = require('axios');
 const sizeOf = require('image-size');
 const fs = require('fs');
 const path = require('path');
+const readline = require('readline')
+const os = require("os")
+const configFileName = '.muralith.json'; // Replace with your desired file name
+const configFilePath = `${os.homedir()}/${configFileName}`;
 
+let query;
+let workingDir;
+let favouritesDir;
+let n;
 
 let temp = [];
 function createUrl(query) {
@@ -24,8 +31,37 @@ function wait(milliseconds) {
     });
 }
 
+async function fixCfg() {
+    fs.access(configFilePath, fs.constants.F_OK, (err) => {
+        if (err) {
+            const rl = readline.createInterface({
+                input: process.stdin,
+                output: process.stdout,
+            });
+
+            rl.question('Config file not found. Do you want to generate it? (Y/n): ', (answer) => {
+                answer = answer.trim().toLowerCase() || 'y';
+                if (answer === 'y') {
+                    fs.writeFile(filePath, "{}", (err) => {
+                        if (err) {
+                            console.error('Error generating the file:', err);
+                            process.exit(1)
+                        } else {
+                            console.log(`File generated successfully at ${configFilePath}`);
+                        }
+                    });
+                }
+                rl.close();
+            });
+        } else {
+            console.log('Config file found');
+        }
+    });
+    return
+}
+
 async function fetchImageUrl(url) {
-    const browser = await puppeteer.launch({ headless: "new" });
+    const browser = await puppeteer.launch({ headless: false });
     const page = await browser.newPage();
     await page.goto(url);
     await wait(2200);
@@ -62,29 +98,6 @@ async function fetchImageUrl(url) {
             retryCount++;
         }
     }
-
-
-
-
-
-
-
-
-//
-//
-//     // Get all the image elements on the page
-//     const imgTags = await page.$$('img');
-//
-//     // Pick a random index within the range of imgTags
-//     const randomIndex = Math.floor(Math.random() * imgTags.length);
-//
-//     await imgTags[randomIndex].click();
-//     await wait(3000);
-//     await page.waitForSelector('.detail__inner');
-//     const pageContent = await page.content();
-//     const imgUrl = getHDUrl(pageContent)
-//     await browser.close();
-//     return imgUrl
 }
 
 function getHDUrl(pageContent) {
@@ -138,14 +151,114 @@ async function downloadAndVerifyImage(imageUrl, outputPath) {
     console.error(`Failed to download and verify image after ${maxRetries} retries.`);
 }
 
+async function getCFGFromFile() {
+    try {
+        // Check if the file exists
+        await fs.promises.access(configFilePath, fs.constants.F_OK);
+
+        // Read the file
+        const data = await fs.promises.readFile(configFilePath, 'utf8');
+
+        // Parse the JSON data
+        const cfg = JSON.parse(data);
+
+        return cfg;
+    } catch (err) {
+        console.error('Error:', err);
+        throw err; // Rethrow the error if you want to handle it further up the call stack.
+    }
+}
+async function saveToConfig(value, key) {
+    console.log(`TODO save ${value} to cfg.${key}`)
+}
+
+async function promptForQuery() {
+    const rl = readline.createInterface({
+        input: process.stdin,
+        output: process.stdout,
+    });
+
+    rl.question(`write search query (${query}): `, (answer) => {
+        answer = answer.trim().toLowerCase() || query;
+        saveToConfig(answer, "query")
+        rl.close();
+    });
+}
+
+async function promptForWorkingDir() {
+    const rl = readline.createInterface({
+        input: process.stdin,
+        output: process.stdout,
+    });
+
+    rl.question(`write path for workingDir (${workingDir}): `, (answer) => {
+        answer = answer.trim().toLowerCase() || workingDir;
+        saveToConfig(answer, "workingDir")
+        rl.close();
+    });
+}
+async function promptForfavouritesDir() {
+    const rl = readline.createInterface({
+        input: process.stdin,
+        output: process.stdout,
+    });
+
+    rl.question(`write path for favouritesDir (${favouritesDir}): `, (answer) => {
+        answer = answer.trim().toLowerCase() || favouritesDir;
+        saveToConfig(answer, "favouritesDir")
+        rl.close();
+    });
+}
+async function promptForN() {
+    const rl = readline.createInterface({
+        input: process.stdin,
+        output: process.stdout,
+    });
+
+    rl.question(`How many images do you wish to save (${n}): `, (answer) => {
+        answer = answer.trim().toLowerCase() || n;
+        saveToConfig(answer, "n")
+        rl.close();
+    });
+}
+
+
+
+async function setParams() {
+    const configParams = await getCFGFromFile()
+    query = configParams["query"]
+    workingDir = configParams["workingDir"];
+    favouritesDir = configParams["favouritesDir"];
+    n = configParams["n"]
+    if (!query) {
+        await promptForQuery()
+    }
+    if (!workingDir) {
+        await promptForWorkingDir()
+    }
+    if (!favouritesDir) {
+        await promptForfavouritesDir()
+    }
+    if (!n) {
+        await promptForN()
+    }
+    return
+}
+
 (async () => {
+    await fixCfg()
+    await setParams()
     const url = createUrl(query);
     const imageUrl = await fetchImageUrl(url)
-    if(!imageUrl){
+    if (!imageUrl) {
         console.error("error getting image url")
         process.exit(1)
     }
-    const outputPath = path.join(__dirname, 'downloaded_image.jpg');
+    console.log(`Query: ${query}`)
+    console.log(`workingDir: ${workingDir}`)
+    console.log(`favouritesDir: ${favouritesDir}`)
+    console.log(`number of images: ${n}`)
+    const outputPath = path.join(workingDir, 'downloaded_image.jpg');
     await downloadAndVerifyImage(imageUrl, outputPath);
     process.exit(0);
 })();
