@@ -61,17 +61,18 @@ async function fixCfg() {
 }
 
 async function fetchImageUrl(url) {
-    const browser = await puppeteer.launch({ headless: false });
-    const page = await browser.newPage();
-    await page.goto(url);
-    await wait(2200);
-
     let retryCount = 0;
     const maxRetries = 5;
     let imgUrl = null;
+    const browser = await puppeteer.launch({ headless: "new" });
 
     while (retryCount < maxRetries) {
         try {
+            const browser = await puppeteer.launch({ headless: "new" });
+            const page = await browser.newPage();
+            await page.goto(url);
+            await wait(2200);
+
             // Get all the image elements on the page
             const imgTags = await page.$$('img');
 
@@ -80,7 +81,7 @@ async function fetchImageUrl(url) {
 
             // Attempt to click the selected image directly
             await imgTags[randomIndex].click();
-            await page.waitForTimeout(3000); // Use waitForTimeout instead of wait for a pause
+            wait(3000)
 
             // Wait for the .detail__inner element
             await page.waitForSelector('.detail__inner');
@@ -95,6 +96,7 @@ async function fetchImageUrl(url) {
             return imgUrl;
         } catch (error) {
             console.error(`Error during image fetching (retry ${retryCount + 1}):`, error);
+            await browser.close();
             retryCount++;
         }
     }
@@ -249,17 +251,19 @@ async function setParams() {
     await fixCfg()
     await setParams()
     const url = createUrl(query);
-    const imageUrl = await fetchImageUrl(url)
-    if (!imageUrl) {
-        console.error("error getting image url")
-        process.exit(1)
+
+    let nn = 0
+    console.log(`downloading ${n} images with query ${query}...`)
+    while (n >= nn) {
+        const imageUrl = await fetchImageUrl(url)
+        if (!imageUrl) {
+            console.error("error getting image url")
+            process.exit(1)
+        }
+        const outputPath = path.join(workingDir, `downloaded_image-${(new Date()).valueOf().toString()}.jpg`);
+        await downloadAndVerifyImage(imageUrl, outputPath);
+        nn++
     }
-    console.log(`Query: ${query}`)
-    console.log(`workingDir: ${workingDir}`)
-    console.log(`favouritesDir: ${favouritesDir}`)
-    console.log(`number of images: ${n}`)
-    const outputPath = path.join(workingDir, 'downloaded_image.jpg');
-    await downloadAndVerifyImage(imageUrl, outputPath);
     process.exit(0);
 })();
 
