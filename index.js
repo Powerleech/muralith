@@ -39,10 +39,8 @@ async function fetchImageUrl(url, n) {
                 imgUrl = getHDUrl(pageContent);
 
                 if(imgUrls.find(i => i === imgUrl)){
-                    console.log("already picked, nn: ", nn)
                     continue
                 }
-                console.log("new guy, n: ", nn)
                 imgUrls.push(imgUrl);
                 nn++
             }
