@@ -11,10 +11,10 @@ const os = require("os")
 const configFileName = '.muralith.json'; // Replace with your desired file name
 const configFilePath = `${os.homedir()}/${configFileName}`;
 
-let query;
-let workingDir;
-let favouritesDir;
-let n;
+var query;
+var workingDir;
+var favouritesDir;
+var n;
 
 let temp = [];
 function createUrl(query) {
@@ -32,34 +32,39 @@ function wait(milliseconds) {
 }
 
 async function fixCfg() {
+  return new Promise((resolve, reject) => {
     fs.access(configFilePath, fs.constants.F_OK, (err) => {
-        if (err) {
-            const rl = readline.createInterface({
-                input: process.stdin,
-                output: process.stdout,
-            });
+      if (err) {
+        const rl = readline.createInterface({
+          input: process.stdin,
+          output: process.stdout,
+        });
 
-            rl.question('Config file not found. Do you want to generate it? (Y/n): ', (answer) => {
-                answer = answer.trim().toLowerCase() || 'y';
-                if (answer === 'y') {
-                    fs.writeFile(filePath, "{}", (err) => {
-                        if (err) {
-                            console.error('Error generating the file:', err);
-                            process.exit(1)
-                        } else {
-                            console.log(`File generated successfully at ${configFilePath}`);
-                        }
-                    });
-                }
-                rl.close();
+        rl.question('Config file not found. Do you want to generate it? (Y/n): ', (answer) => {
+          answer = answer.trim().toLowerCase() || 'y';
+          if (answer === 'y') {
+            fs.writeFile(configFilePath, '{}', (err) => {
+              rl.close();
+              if (err) {
+                console.error('Error generating the file:', err);
+                reject(err);
+              } else {
+                console.log(`File generated successfully at ${configFilePath}`);
+                resolve();
+              }
             });
-        } else {
-            console.log('Config file found');
-        }
+          } else {
+            rl.close();
+            resolve(); // User chose not to generate the file
+          }
+        });
+      } else {
+        console.log('Config file found');
+        resolve(); // File already exists
+      }
     });
-    return
+  });
 }
-
 async function fetchImageUrl(url) {
     let retryCount = 0;
     const maxRetries = 5;
@@ -174,57 +179,21 @@ async function saveToConfig(value, key) {
     console.log(`TODO save ${value} to cfg.${key}`)
 }
 
-async function promptForQuery() {
-    const rl = readline.createInterface({
-        input: process.stdin,
-        output: process.stdout,
-    });
+async function promptForValue(question, defaultValue, configKey) {
+  const rl = readline.createInterface({
+    input: process.stdin,
+    output: process.stdout,
+  });
 
-    rl.question(`write search query (${query}): `, (answer) => {
-        answer = answer.trim().toLowerCase() || query;
-        saveToConfig(answer, "query")
-        rl.close();
+  return new Promise((resolve) => {
+    rl.question(`${question} (${defaultValue}): `, (answer) => {
+      answer = answer.trim() || defaultValue;
+      saveToConfig(answer, configKey);
+      rl.close();
+      resolve(answer);
     });
+  });
 }
-
-async function promptForWorkingDir() {
-    const rl = readline.createInterface({
-        input: process.stdin,
-        output: process.stdout,
-    });
-
-    rl.question(`write path for workingDir (${workingDir}): `, (answer) => {
-        answer = answer.trim().toLowerCase() || workingDir;
-        saveToConfig(answer, "workingDir")
-        rl.close();
-    });
-}
-async function promptForfavouritesDir() {
-    const rl = readline.createInterface({
-        input: process.stdin,
-        output: process.stdout,
-    });
-
-    rl.question(`write path for favouritesDir (${favouritesDir}): `, (answer) => {
-        answer = answer.trim().toLowerCase() || favouritesDir;
-        saveToConfig(answer, "favouritesDir")
-        rl.close();
-    });
-}
-async function promptForN() {
-    const rl = readline.createInterface({
-        input: process.stdin,
-        output: process.stdout,
-    });
-
-    rl.question(`How many images do you wish to save (${n}): `, (answer) => {
-        answer = answer.trim().toLowerCase() || n;
-        saveToConfig(answer, "n")
-        rl.close();
-    });
-}
-
-
 
 async function setParams() {
     const configParams = await getCFGFromFile()
@@ -232,17 +201,17 @@ async function setParams() {
     workingDir = configParams["workingDir"];
     favouritesDir = configParams["favouritesDir"];
     n = configParams["n"]
-    if (!query) {
-        await promptForQuery()
+    if (query === undefined) {
+        await promptForValue(`write search query (${query}): `, query, "query")
     }
-    if (!workingDir) {
-        await promptForWorkingDir()
+    if (workingDir === undefined) {
+        await promptForValue(`write path for workingDir (${workingDir}): `, workingDir, "workingDir")
     }
-    if (!favouritesDir) {
-        await promptForfavouritesDir()
+    if (favouritesDir === undefined) {
+        await promptForValue(`write path for favouritesDir (${favouritesDir}): `, favouritesDir, "favouritesDir")
     }
-    if (!n) {
-        await promptForN()
+    if (n === undefined) {
+        await promptForValue(`How many images do you wish to save (${n}): `, 10, "n")
     }
     return
 }
