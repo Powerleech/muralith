@@ -120,21 +120,28 @@ function getHDUrl(pageContent) {
     return imageUrl
 }
 
-async function waitAndLoadMore(page){
+async function waitAndLoadMore(page, n) {
+    if(n <= 20) {
+        await wait(4000)
+    }
+    if (n > 20) {
         await wait(2200);
         await page.evaluate(() => {
             window.scrollTo(0, document.body.scrollHeight);
         });
+    }
+    if (n > 30) {
         await wait(2200);
         await page.evaluate(() => {
             window.scrollTo(0, document.body.scrollHeight);
         });
+    }
+    if (n > 50) {
         await wait(2200);
         await page.evaluate(() => {
             window.scrollTo(0, document.body.scrollHeight);
         });
-        await wait(2200);
-
+    }
 }
 
 function wait(milliseconds) {
@@ -145,8 +152,9 @@ function wait(milliseconds) {
 
 function createUrl(query) {
     const baseUrl = "https://duckduckgo.com/?t=h_";
+    query = query = " hd wallpaper jpg art digiatal art images paintings"
     const q = new URLSearchParams(query);
-    const suffix = "&iax=images&ia=images&iaf=size%3AWallpaper&pn=2";
+    const suffix = "&iax=images&ia=images&iaf=size%3AWallpaper&";
     const url = baseUrl + "&q=" + q + suffix;
     return url;
 }
@@ -167,6 +175,7 @@ async function fixCfg() {
                             rl.close();
                             if (err) {
                                 console.error('Error generating the file:', err);
+
                                 reject(err);
                             } else {
                                 console.log(`File generated successfully at ${configFilePath}`);

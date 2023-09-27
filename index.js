@@ -26,9 +26,11 @@ async function fetchImageUrl(url, n) {
         const browser = await puppeteer.launch({ headless: "new" });
         const page = await browser.newPage();
         await page.goto(url);
-        await waitAndLoadMore(page)
+        await waitAndLoadMore(page, n)
+        console.log("page content should be loaded now")
         try {
             while (n > nn) {
+                console.log(`getting ${nn} og ${n} images`)
                 const imgTags = await page.$$('img');
                 randomIndex = Math.floor(Math.random() * imgTags.length);
                 await imgTags[randomIndex].click();
@@ -84,7 +86,7 @@ async function downloadAndVerifyImage(imageUrl, outputPath) {
 }
 async function setParams() {
     const configParams = await getCFGFromFile()
-    query = configParams["query"]
+    query = configParams["query"].replaceAll("_", " ")
     workingDir = configParams["workingDir"];
     favouritesDir = configParams["favouritesDir"];
     n = configParams["n"]
@@ -124,6 +126,7 @@ async function main(options) {
     for (const imgUrl of imageUrls) {
         // @ts-ignore
         const outputPath = path.join(workingDir, `${query.replaceAll(" ", "_")}-${(new Date()).valueOf().toString()}.jpg`);
+        console.log("Downloading images....")
         await downloadAndVerifyImage(imgUrl, outputPath);
     }
     process.exit(0);
@@ -153,7 +156,7 @@ if (require.main === module) {
     if (args.query === "") {
         saveToConfig(undefined, "query")
     } else if (args.query) {
-        const formattedQuery = args.query.replace(/ /g, "_");
+        const formattedQuery = args.query;
         saveToConfig(formattedQuery, "query")
         cleanWorkingDir = true
     }
