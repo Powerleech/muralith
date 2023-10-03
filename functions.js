@@ -99,20 +99,19 @@ async function getCFGFromFile() {
     }
 }
 
-function getHDUrl(pageContent) {
+function getHDUrl(pageContent, width, height) {
     const $ = cheerio.load(pageContent);
-    const detailInnerHtml = $('.detail__inner img');
+    const detailInnerHtml = $('.c-detail__desc');
     let imageUrl;
     detailInnerHtml.each((index, element) => {
-        const src = $(element).attr('src');
-        const className = $(element).attr('class');
-        if (src) {
-            const parts = src.split('?u=');
-            if (parts.length > 1 && !className.includes("thumb")) {
-                const lastPart = parts[1];
-                imageUrl = decodeURIComponent(src);
+        const fileMeta = $(element).find('.c-detail__filemeta').text();
+            const actualSize = fileMeta;
+            if (width +" x " + height == actualSize) {
+                const href = $(element).find('a').attr('href');
+                imageUrl = href
+            } else {
+                throw new Error(`The dimension not fitting, expected ${width} x ${height}, got ${actualSize}`)
             }
-        }
     });
     if (!imageUrl || imageUrl === undefined) {
         throw new Error("No hd image url found")
@@ -121,7 +120,7 @@ function getHDUrl(pageContent) {
 }
 
 async function waitAndLoadMore(page, n) {
-    if(n <= 20) {
+    if (n <= 20) {
         await wait(4000)
     }
     if (n > 20) {
@@ -150,9 +149,9 @@ function wait(milliseconds) {
     });
 }
 
-function createUrl(query) {
+function createUrl(query, width, height) {
     const baseUrl = "https://duckduckgo.com/?t=h_";
-    query = query = " hd wallpaper jpg art digiatal art images paintings"
+    query = `${width} ${height} hd wallpaper jpg art digiatal art images paintings ${query}`
     const q = new URLSearchParams(query);
     const suffix = "&iax=images&ia=images&iaf=size%3AWallpaper&";
     const url = baseUrl + "&q=" + q + suffix;

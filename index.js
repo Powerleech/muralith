@@ -12,9 +12,11 @@ var query;
 var workingDir;
 var favouritesDir;
 var n;
+var width = 1920;
+var height = 1080;
 
 async function fetchImageUrl(url, n) {
-    const imgUrls = [];
+    console.log(`downloading ${n} images with query ${query}...`)
     let retryCount = 0;
     const maxRetries = 5;
     let imgUrl = null;
@@ -38,16 +40,18 @@ async function fetchImageUrl(url, n) {
 
                 await page.waitForSelector('.detail__inner');
                 const pageContent = await page.content();
-                imgUrl = getHDUrl(pageContent);
-
-                if(imgUrls.find(i => i === imgUrl)){
-                    continue
-                }
-                imgUrls.push(imgUrl);
-                nn++
+                // try {
+                    imgUrl = getHDUrl(pageContent, width, height);
+                    const outputPath = path.join(workingDir, `${query.replaceAll(" ", "_")}-${(new Date()).valueOf().toString()}.jpg`);
+                    console.log("Downloading images....")
+                    downloadAndVerifyImage(imgUrl, outputPath)
+            //     } catch(err) {
+            //         console.log(`I restart at index ${nn} because an error was ${err}`)
+            //         continue
+            //     }
+            //     nn++
             }
             await browser.close();
-            return imgUrls
         } catch (error) {
             console.error(`Error during scraping image url (retry ${retryCount + 1}):`, error);
             await browser.close();
@@ -110,25 +114,14 @@ async function main(options) {
     if (options.cleanWorkingDir) {
         await deleteFilesInDirectory(workingDir)
     }
-    const url = createUrl(query);
+    const url = createUrl(query, width, height);
 
     if (query === undefined || query === "") {
         console.error("The Search query should not be empty");
         process.exit(1);
     }
-    console.log(`scraping wallpaper urls from the search results of ${query}...`)
-    const imageUrls = await fetchImageUrl(url, n)
-    if (imageUrls.length === 0) {
-        console.error("error getting image url")
-        process.exit(1)
-    }
-    console.log(`downloading ${n} images with query ${query}...`)
-    for (const imgUrl of imageUrls) {
-        // @ts-ignore
-        const outputPath = path.join(workingDir, `${query.replaceAll(" ", "_")}-${(new Date()).valueOf().toString()}.jpg`);
-        console.log("Downloading images....")
-        await downloadAndVerifyImage(imgUrl, outputPath);
-    }
+    console.log(`scraping wallpaper urls from the search results of ${url}...`)
+    await fetchImageUrl(url, n)
     process.exit(0);
 }
 
