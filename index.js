@@ -7,6 +7,7 @@ const sizeOf = require('image-size');
 const fs = require('fs');
 const path = require('path');
 const { getCFGFromFile, promptForValue, fixCfg, createUrl, wait, getHDUrl, saveToConfig, deleteFilesInDirectory, waitAndLoadMore } = require('./functions');
+const cheerio = require("cheerio")
 
 var query;
 var workingDir;
@@ -22,36 +23,45 @@ function shuffleArray(array) {
         array[i] = array[j];
         array[j] = temp;
     }
+    return array
 }
 
-async function HasImageClass(page, element) {
-    const hasClass = await page.evaluate(element => {
-        return element.classList.contains("tile--img__img");
-    }, element);
-    return hasClass
+async function HasImageClass(page, randomImage) {
+    try {
+        const hasClass = page.evaluate(element => {
+            return element.classList.contains("tile--img__img");
+        }, randomImage);
+
+        return await hasClass;
+    } catch {
+        return false
+    }
 }
 
 async function fetchImageUrl(url, n) {
     console.log(`finding ${n} images with query ${query}...`)
     let imgUrl = null;
+
     let nn = 0
     try {
         const browser = await puppeteer.launch({ headless: "new" });
         const page = await browser.newPage();
         await page.goto(url);
         await waitAndLoadMore(page, n)
-        console.log("page content should be loaded now")
+        const imgTags = await page.$$('img');
+        const shuffledImages = shuffleArray(imgTags)
+
         while (n > nn) {
             try {
-                const imgTags = await page.$$('img');
-                const randomImage = imgTags.pop()
-                if (!HasImageClass(page, randomImage)) {
-					continue
+                console.log(`\n${(nn + 1)} of ${n}`)
+                const randomImage = shuffledImages.pop()
+                const validImage = await HasImageClass(page, randomImage)
+                if (validImage !== true) {
+                    throw new Error("not valid image")
                 }
-            	console.log(`\n${(nn + 1)} of ${n}`)
-				console.log(randomImage)
-                randomImage.click();
-                await wait(3000)
+                await wait(1000)
+                await randomImage.click();
+                await wait(1000)
 
                 await page.waitForSelector('.detail__inner');
                 const pageContent = await page.content();
@@ -77,33 +87,22 @@ async function fetchImageUrl(url, n) {
     }
 }
 async function downloadAndVerifyImage(imageUrl, outputPath) {
-    let retries = 0;
-    const maxRetries = 5
-
     console.log(`downloading from ${imageUrl} ... `)
-    while (retries < maxRetries) {
-        try {
-            // @ts-ignore
-            const response = await axios.get(imageUrl, { responseType: 'arraybuffer' });
-            if (response.headers['content-type'].startsWith('image')) {
-                // @ts-ignore
-                const dimensions = sizeOf(response.data);
-                if (dimensions.width && dimensions.height) {
-                    fs.writeFileSync(outputPath, response.data);
-                    console.log('Saved to ', outputPath);
-                    return
-                } else {
-                    console.log('Invalid image.');
-                }
-            } else {
-                console.log('The provided URL does not point to an image. Content: ', response.headers["content-type"]);
-            }
-        } catch (error) {
-            retries++;
-            console.error('Error downloading or verifying the image:', error.code);
+    // @ts-ignore
+    const response = await axios.get(imageUrl, { responseType: 'arraybuffer' });
+    if (response.headers['content-type'].startsWith('image')) {
+        // @ts-ignore
+        const dimensions = sizeOf(response.data);
+        if (dimensions.width && dimensions.height) {
+            fs.writeFileSync(outputPath, response.data);
+            console.log('Saved to ', outputPath);
+            return
+        } else {
+            console.log('Invalid image.');
         }
+    } else {
+        throw new Error(`The provided URL does not point to an image. Content: ${response.headers["content-type"]}`);
     }
-    console.error(`Failed to download and verify image ${imageUrl} after ${maxRetries} retries.`);
 }
 async function setParams() {
     const configParams = await getCFGFromFile()

@@ -109,7 +109,7 @@ function getHDUrl(pageContent, width, height) {
             const href = $(element).find('.js-image-detail-link').attr('href');
             imageUrl = href
         } else {
-            throw new Error(`Expected the height to be minimum ${height}, got ${actualHeight}`)
+            throw new Error(`Expected the height to be minimum ${(height*0.9)}, got ${actualHeight}`)
         }
     });
     if (!imageUrl || imageUrl === undefined) {
@@ -137,7 +137,7 @@ async function waitAndLoadMore(page, n) {
 		console.log("...")
         await wait(2000);
     }
-	await wait(4000)
+    console.log("page content should be loaded now")
 }
 
 function wait(milliseconds) {
