@@ -6,7 +6,6 @@ const os = require("os")
 const configFileName = '.muralith.json';
 const configFilePath = `${os.homedir()}/${configFileName}`;
 
-
 async function promptForValue(question, defaultValue, configKey) {
     const rl = readline.createInterface({
         input: process.stdin,
@@ -36,7 +35,6 @@ function deleteFilesInDirectory(directoryPath) {
             if (answer === "y") {
                 fs.readdir(directoryPath, (err, files) => {
                     if (err) throw err;
-                    console.log(`deleting files in ${directoryPath}`)
                     for (const file of files) {
                         fs.unlink(path.join(directoryPath, file), (err) => {
                             if (err) throw err;
@@ -105,14 +103,14 @@ function getHDUrl(pageContent, width, height) {
     let imageUrl;
     detailInnerHtml.each((index, element) => {
         const fileMeta = $(element).find('.c-detail__filemeta').text();
-            const actualSize = fileMeta;
-			const actualHeight = parseInt(actualSize.split(/\D+/)[1]);
-            if (actualHeight >= height) {
-                const href = $(element).find('.js-image-detail-link').attr('href');
-                imageUrl = href
-            } else {
-                throw new Error(`Expected the height to be minimum ${height}, got ${actualHeight}`)
-            }
+        const actualSize = fileMeta;
+        const actualHeight = parseInt(actualSize.split(/\D+/)[1]);
+        if (actualHeight >= height*0.9) {
+            const href = $(element).find('.js-image-detail-link').attr('href');
+            imageUrl = href
+        } else {
+            throw new Error(`Expected the height to be minimum ${height}, got ${actualHeight}`)
+        }
     });
     if (!imageUrl || imageUrl === undefined) {
         throw new Error("No hd image url found")
@@ -121,27 +119,25 @@ function getHDUrl(pageContent, width, height) {
 }
 
 async function waitAndLoadMore(page, n) {
+	console.log("making sure images are fully loaded...")
     if (n <= 20) {
         await wait(4000)
     }
     if (n > 20) {
-        await wait(2200);
         await page.evaluate(() => {
             window.scrollTo(0, document.body.scrollHeight);
         });
+		console.log("...")
+        await wait(2200);
     }
     if (n > 30) {
-        await wait(2200);
         await page.evaluate(() => {
             window.scrollTo(0, document.body.scrollHeight);
         });
+		console.log("...")
+        await wait(2000);
     }
-    if (n > 50) {
-        await wait(2200);
-        await page.evaluate(() => {
-            window.scrollTo(0, document.body.scrollHeight);
-        });
-    }
+	await wait(4000)
 }
 
 function wait(milliseconds) {

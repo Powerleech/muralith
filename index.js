@@ -15,27 +15,42 @@ var n;
 var width = 1920;
 var height = 1080;
 
+function shuffleArray(array) {
+    for (var i = array.length - 1; i > 0; i--) {
+        var j = Math.floor(Math.random() * (i + 1));
+        var temp = array[i];
+        array[i] = array[j];
+        array[j] = temp;
+    }
+}
+
+async function HasImageClass(page, element) {
+    const hasClass = await page.evaluate(element => {
+        return element.classList.contains("tile--img__img");
+    }, element);
+    return hasClass
+}
+
 async function fetchImageUrl(url, n) {
-    console.log(`downloading ${n} images with query ${query}...`)
-    let retryCount = 0;
-    const maxRetries = 5;
+    console.log(`finding ${n} images with query ${query}...`)
     let imgUrl = null;
     let nn = 0
-
-    while (retryCount < maxRetries) {
-        let randomIndex;
-
+    try {
         const browser = await puppeteer.launch({ headless: "new" });
         const page = await browser.newPage();
         await page.goto(url);
         await waitAndLoadMore(page, n)
         console.log("page content should be loaded now")
-        try {
-            while (n > nn) {
-                console.log(`\n${(nn+1)} of ${n}`)
+        while (n > nn) {
+            try {
                 const imgTags = await page.$$('img');
-                randomIndex = Math.floor(Math.random() * imgTags.length);
-                await imgTags[randomIndex].click();
+                const randomImage = imgTags.pop()
+                if (!HasImageClass(page, randomImage)) {
+					continue
+                }
+            	console.log(`\n${(nn + 1)} of ${n}`)
+				console.log(randomImage)
+                randomImage.click();
                 await wait(3000)
 
                 await page.waitForSelector('.detail__inner');
@@ -44,18 +59,21 @@ async function fetchImageUrl(url, n) {
                     imgUrl = getHDUrl(pageContent, width, height);
                     const outputPath = path.join(workingDir, `${query.replaceAll(" ", "_")}-${(new Date()).valueOf().toString()}.jpg`);
                     await downloadAndVerifyImage(imgUrl, outputPath)
-                } catch(err) {
-                    console.log(`retry image ${nn} because err: ${err}`)
+                } catch (err) {
+                    console.log(`retry image ${(nn + 1)} because err: ${err}`)
                     continue
                 }
                 nn++
+            } catch (err) {
+                console.log("and error happened, retrying...", err)
+                await wait(2000)
+                continue
             }
-            await browser.close();
-        } catch (error) {
-            console.error(`images not ready yet, retrying ${retryCount + 1}/${maxRetries}:`);
-            await browser.close();
-            retryCount++;
         }
+        await browser.close();
+    } catch (err) {
+        console.error("error: ", err)
+        process.exit(1)
     }
 }
 async function downloadAndVerifyImage(imageUrl, outputPath) {
@@ -111,8 +129,10 @@ async function main(options) {
     await fixCfg()
     await setParams()
     if (options.cleanWorkingDir) {
+        console.log(`deleting files in ${workingDir}`)
         await deleteFilesInDirectory(workingDir)
     }
+    console.log("old wallpapers deleted...")
     const url = createUrl(query, width, height);
 
     if (query === undefined || query === "") {
