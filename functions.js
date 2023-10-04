@@ -106,11 +106,12 @@ function getHDUrl(pageContent, width, height) {
     detailInnerHtml.each((index, element) => {
         const fileMeta = $(element).find('.c-detail__filemeta').text();
             const actualSize = fileMeta;
-            if (width +" x " + height == actualSize) {
-                const href = $(element).find('a').attr('href');
+			const actualHeight = parseInt(actualSize.split(/\D+/)[1]);
+            if (actualHeight >= height) {
+                const href = $(element).find('.js-image-detail-link').attr('href');
                 imageUrl = href
             } else {
-                throw new Error(`The dimension not fitting, expected ${width} x ${height}, got ${actualSize}`)
+                throw new Error(`Expected the height to be minimum ${height}, got ${actualHeight}`)
             }
     });
     if (!imageUrl || imageUrl === undefined) {

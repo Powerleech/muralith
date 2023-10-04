@@ -32,7 +32,7 @@ async function fetchImageUrl(url, n) {
         console.log("page content should be loaded now")
         try {
             while (n > nn) {
-                console.log(`getting ${nn} og ${n} images`)
+                console.log(`\n${(nn+1)} of ${n}`)
                 const imgTags = await page.$$('img');
                 randomIndex = Math.floor(Math.random() * imgTags.length);
                 await imgTags[randomIndex].click();
@@ -40,20 +40,19 @@ async function fetchImageUrl(url, n) {
 
                 await page.waitForSelector('.detail__inner');
                 const pageContent = await page.content();
-                // try {
+                try {
                     imgUrl = getHDUrl(pageContent, width, height);
                     const outputPath = path.join(workingDir, `${query.replaceAll(" ", "_")}-${(new Date()).valueOf().toString()}.jpg`);
-                    console.log("Downloading images....")
-                    downloadAndVerifyImage(imgUrl, outputPath)
-            //     } catch(err) {
-            //         console.log(`I restart at index ${nn} because an error was ${err}`)
-            //         continue
-            //     }
-            //     nn++
+                    await downloadAndVerifyImage(imgUrl, outputPath)
+                } catch(err) {
+                    console.log(`retry image ${nn} because err: ${err}`)
+                    continue
+                }
+                nn++
             }
             await browser.close();
         } catch (error) {
-            console.error(`Error during scraping image url (retry ${retryCount + 1}):`, error);
+            console.error(`images not ready yet, retrying ${retryCount + 1}/${maxRetries}:`);
             await browser.close();
             retryCount++;
         }
@@ -63,7 +62,7 @@ async function downloadAndVerifyImage(imageUrl, outputPath) {
     let retries = 0;
     const maxRetries = 5
 
-    console.log("downloading ", imageUrl)
+    console.log(`downloading from ${imageUrl} ... `)
     while (retries < maxRetries) {
         try {
             // @ts-ignore
@@ -79,7 +78,7 @@ async function downloadAndVerifyImage(imageUrl, outputPath) {
                     console.log('Invalid image.');
                 }
             } else {
-                console.log('The provided URL does not point to an image.');
+                console.log('The provided URL does not point to an image. Content: ', response.headers["content-type"]);
             }
         } catch (error) {
             retries++;
