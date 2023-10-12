@@ -7,7 +7,6 @@ const sizeOf = require('image-size');
 const fs = require('fs');
 const path = require('path');
 const { getCFGFromFile, promptForValue, fixCfg, createUrl, wait, getHDUrl, saveToConfig, deleteFilesInDirectory, waitAndLoadMore } = require('./functions');
-const cheerio = require("cheerio")
 
 var query;
 var workingDir;

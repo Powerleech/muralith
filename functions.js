@@ -148,7 +148,7 @@ function wait(milliseconds) {
 
 function createUrl(query, width, height) {
     const baseUrl = "https://duckduckgo.com/?t=h_";
-    query = `${width} ${height} hd wallpaper jpg art digiatal art images paintings ${query}`
+    query = `${width} ${height} hd art "digital art" paintings ${query}`
     const q = new URLSearchParams(query);
     const suffix = "&iax=images&ia=images&iaf=size%3AWallpaper&";
     const url = baseUrl + "&q=" + q + suffix;
