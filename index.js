@@ -6,11 +6,11 @@ const axios = require('axios');
 const sizeOf = require('image-size');
 const fs = require('fs');
 const path = require('path');
-const { getCFGFromFile, promptForValue, fixCfg, createUrl, wait, getHDUrl, saveToConfig, deleteFilesInDirectory, waitAndLoadMore } = require('./functions');
+const { getCFGFromFile, promptForValue, fixCfg, createUrl, wait, getHDUrl, saveToConfig, deleteFilesInDirectory, waitAndLoadMore, getOrCreateQueryFolder } = require('./functions');
 
 var query;
 var workingDir;
-var favouritesDir;
+var imageFileDir;
 var n;
 var width = 1920;
 var height = 1080;
@@ -53,7 +53,7 @@ async function fetchImageUrl(url, n) {
         while (n > nn) {
             try {
                 console.log(`\n${(nn + 1)} of ${n}`)
-                const randomImage = shuffledImages.pop()
+                const randomImage = imgTags.pop()
                 const validImage = await HasImageClass(page, randomImage)
                 if (validImage !== true) {
                     throw new Error("not valid image")
@@ -66,7 +66,7 @@ async function fetchImageUrl(url, n) {
                 const pageContent = await page.content();
                 try {
                     imgUrl = getHDUrl(pageContent, width, height);
-                    const outputPath = path.join(workingDir, `${query.replaceAll(" ", "_")}-${(new Date()).valueOf().toString()}.jpg`);
+                    const outputPath = path.join(workingDir, `${query.replaceAll(" ", "_")}`,`${(new Date()).valueOf().toString()}.jpg`);
                     await downloadAndVerifyImage(imgUrl, outputPath)
                 } catch (err) {
                     console.log(`retry image ${(nn + 1)} because err: ${err}`)
@@ -107,7 +107,6 @@ async function setParams() {
     const configParams = await getCFGFromFile()
     query = configParams["query"].replaceAll("_", " ")
     workingDir = configParams["workingDir"];
-    favouritesDir = configParams["favouritesDir"];
     n = configParams["n"]
     if (query === undefined) {
         query = await promptForValue(`write search query (${query}): `, query, "query")
@@ -115,20 +114,16 @@ async function setParams() {
     if (workingDir === undefined) {
         workingDir = await promptForValue(`write path for workingDir (${workingDir}): `, workingDir, "workingDir")
     }
-    if (favouritesDir === undefined) {
-        favouritesDir = await promptForValue(`write path for favouritesDir (${favouritesDir}): `, favouritesDir, "favouritesDir")
-    }
     if (n === undefined) {
         n = await promptForValue(`How many images do you wish to save (${n}): `, 1, "n")
     }
     return
 }
-async function main(options) {
+async function main() {
     await fixCfg()
     await setParams()
-    if (options.cleanWorkingDir) {
-        await deleteFilesInDirectory(workingDir)
-    }
+    imageFileDir = getOrCreateQueryFolder(workingDir, query)
+
     const url = createUrl(query, width, height);
 
     if (query === undefined || query === "") {
@@ -164,12 +159,10 @@ if (require.main === module) {
     if (args.query === "") {
         saveToConfig(undefined, "query")
     } else if (args.query) {
-        const formattedQuery = args.query;
-        saveToConfig(formattedQuery, "query")
-        cleanWorkingDir = true
+        saveToConfig(args.query, "query")
     }
     if (args.number && parseInt(args.number) > 0) {
         saveToConfig(args.number, "n")
     }
-    (async () => await main({ cleanWorkingDir }))();
-} 
+    (async () =>  main())();
+}

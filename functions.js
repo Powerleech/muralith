@@ -22,32 +22,6 @@ async function promptForValue(question, defaultValue, configKey) {
     });
 }
 
-function deleteFilesInDirectory(directoryPath) {
-    const rl = readline.createInterface({
-        input: process.stdin,
-        output: process.stdout,
-    });
-
-    return new Promise((resolve) => {
-        rl.question(`Would you like to delete all files in the temp folder ${directoryPath} (y/N): `, (answer) => {
-            answer = answer.trim() || "n";
-            rl.close();
-            if (answer === "y") {
-                console.log(`deleting files in ${directoryPath}`)
-                fs.readdir(directoryPath, (err, files) => {
-                    if (err) throw err;
-                    for (const file of files) {
-                        fs.unlink(path.join(directoryPath, file), (err) => {
-                            if (err) throw err;
-                        });
-                    }
-                    console.log("old wallpapers deleted...")
-                });
-            }
-            resolve();
-        });
-    });
-}
 function readFile(path, format = "utf8") {
     try {
         // @ts-ignore
@@ -86,6 +60,23 @@ async function saveToConfig(value, key) {
     }
 }
 
+async function getOrCreateQueryFolder(workingDir, query) {
+    const folderName = query.replaceAll(" ", "_").toLowerCase()
+
+    const subFolderPath = path.join(workingDir, folderName);
+
+    if (!fs.existsSync(folderName)) {
+        fs.mkdir(subFolderPath, { recursive: true }, (err) => {
+            if (err) {
+                console.error('An error occurred:', err);
+            } else {
+                console.log(`Subfolder '${subFolderPath}' created successfully.`);
+            }
+        });
+    }
+    return subFolderPath
+}
+
 async function getCFGFromFile() {
     try {
         await fs.promises.access(configFilePath, fs.constants.F_OK);
@@ -107,11 +98,11 @@ function getHDUrl(pageContent, width, height) {
         const fileMeta = $(element).find('.c-detail__filemeta').text();
         const actualSize = fileMeta;
         const actualHeight = parseInt(actualSize.split(/\D+/)[1]);
-        if (actualHeight >= height*0.9) {
+        if (actualHeight >= height * 0.9) {
             const href = $(element).find('.js-image-detail-link').attr('href');
             imageUrl = href
         } else {
-            throw new Error(`Expected the height to be minimum ${(height*0.9)}, got ${actualHeight}`)
+            throw new Error(`Expected the height to be minimum ${(height * 0.9)}, got ${actualHeight}`)
         }
     });
     if (!imageUrl || imageUrl === undefined) {
@@ -121,7 +112,7 @@ function getHDUrl(pageContent, width, height) {
 }
 
 async function waitAndLoadMore(page, n) {
-	console.log("making sure images are fully loaded...")
+    console.log("making sure images are fully loaded...")
     if (n <= 20) {
         await wait(4000)
     }
@@ -129,14 +120,14 @@ async function waitAndLoadMore(page, n) {
         await page.evaluate(() => {
             window.scrollTo(0, document.body.scrollHeight);
         });
-		console.log("...")
+        console.log("...")
         await wait(2200);
     }
     if (n > 30) {
         await page.evaluate(() => {
             window.scrollTo(0, document.body.scrollHeight);
         });
-		console.log("...")
+        console.log("...")
         await wait(2000);
     }
     console.log("page content should be loaded now")
@@ -150,7 +141,7 @@ function wait(milliseconds) {
 
 function createUrl(query, width, height) {
     const baseUrl = "https://duckduckgo.com/?t=h_";
-    query = `${width} ${height} hd ${query}`
+    query = `hd ${query}`
     const q = new URLSearchParams(query);
     const suffix = "&iax=images&ia=images&iaf=size%3AWallpaper&";
     const url = baseUrl + "&q=" + q + suffix;
@@ -204,5 +195,6 @@ module.exports = {
     promptForValue,
     fixCfg,
     deleteFilesInDirectory,
-    waitAndLoadMore
+    waitAndLoadMore,
+    getOrCreateQueryFolder
 }
