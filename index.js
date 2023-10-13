@@ -127,10 +127,8 @@ async function main(options) {
     await fixCfg()
     await setParams()
     if (options.cleanWorkingDir) {
-        console.log(`deleting files in ${workingDir}`)
         await deleteFilesInDirectory(workingDir)
     }
-    console.log("old wallpapers deleted...")
     const url = createUrl(query, width, height);
 
     if (query === undefined || query === "") {

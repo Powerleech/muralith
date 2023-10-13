@@ -33,6 +33,7 @@ function deleteFilesInDirectory(directoryPath) {
             answer = answer.trim() || "n";
             rl.close();
             if (answer === "y") {
+                console.log(`deleting files in ${directoryPath}`)
                 fs.readdir(directoryPath, (err, files) => {
                     if (err) throw err;
                     for (const file of files) {
@@ -40,6 +41,7 @@ function deleteFilesInDirectory(directoryPath) {
                             if (err) throw err;
                         });
                     }
+                    console.log("old wallpapers deleted...")
                 });
             }
             resolve();
@@ -148,7 +150,7 @@ function wait(milliseconds) {
 
 function createUrl(query, width, height) {
     const baseUrl = "https://duckduckgo.com/?t=h_";
-    query = `${width} ${height} hd art "digital art" paintings ${query}`
+    query = `${width} ${height} hd ${query}`
     const q = new URLSearchParams(query);
     const suffix = "&iax=images&ia=images&iaf=size%3AWallpaper&";
     const url = baseUrl + "&q=" + q + suffix;
