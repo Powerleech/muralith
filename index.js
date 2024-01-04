@@ -6,7 +6,7 @@ const axios = require('axios');
 const sizeOf = require('image-size');
 const fs = require('fs');
 const path = require('path');
-const { getCFGFromFile, promptForValue, fixCfg, createUrl, wait, getHDUrl, saveToConfig, deleteFilesInDirectory, waitAndLoadMore, getOrCreateQueryFolder } = require('./functions');
+const { getCFGFromFile, promptForValue, fixCfg, createUrl, wait, getHDUrl, saveToConfig, waitAndLoadMore, getOrCreateQueryFolder } = require('./functions');
 
 var query;
 var workingDir;

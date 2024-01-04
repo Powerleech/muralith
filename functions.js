@@ -194,7 +194,6 @@ module.exports = {
     readFile,
     promptForValue,
     fixCfg,
-    deleteFilesInDirectory,
     waitAndLoadMore,
     getOrCreateQueryFolder
 }
