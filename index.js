@@ -105,7 +105,7 @@ async function downloadAndVerifyImage(imageUrl, outputPath) {
 }
 async function setParams() {
     const configParams = await getCFGFromFile()
-    query = configParams["query"].replaceAll("_", " ")
+    query = configParams["query"] && configParams["query"].replaceAll("_", " ")
     workingDir = configParams["workingDir"];
     n = configParams["n"]
     if (query === undefined) {
