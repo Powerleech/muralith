@@ -1,25 +1,8 @@
 const fs = require('fs');
 const path = require('path');
-const readline = require('readline')
 const os = require("os")
 const configFileName = '.muralith.json';
 const configFilePath = `${os.homedir()}/${configFileName}`;
-
-async function promptForValue(question, defaultValue, configKey) {
-    const rl = readline.createInterface({
-        input: process.stdin,
-        output: process.stdout,
-    });
-
-    return new Promise((resolve) => {
-        rl.question(`${question} (${defaultValue}): `, (answer) => {
-            answer = answer.trim() || defaultValue;
-            saveToConfig(answer, configKey);
-            rl.close();
-            resolve(answer);
-        });
-    });
-}
 
 function readFile(path, format = "utf8") {
     try {
@@ -45,18 +28,31 @@ function writeToFile(filePath, content, format = "utf8") {
     }
 }
 
-async function saveToConfig(value, key) {
+function getCFGFromFile() {
+    if (!fs.existsSync(configFilePath)) return {}
     try {
-        const fileData = readFile(configFilePath);
-        const jsonData = JSON.parse(fileData);
-        jsonData[key] = value;
-        const updatedData = JSON.stringify(jsonData, null, 2); // Use null and 2 for pretty formatting
-        writeToFile(configFilePath, updatedData);
-
-        console.log(`Key '${key}' with value '${value}' written to config file`);
+        return JSON.parse(readFile(configFilePath));
     } catch (err) {
-        console.error('Error writing to JSON file:', err);
+        console.error(`could not parse ${configFilePath}. Error - ${err}`)
+        return {}
     }
+}
+
+function saveToConfig(value, key) {
+    const cfg = getCFGFromFile();
+    cfg[key] = value;
+    writeToFile(configFilePath, JSON.stringify(cfg, null, 2));
+}
+
+/**
+ * Moves the old single `query` key into the `queries` list.
+ */
+function migrateConfig() {
+    const cfg = getCFGFromFile();
+    if (cfg.queries || !cfg.query) return
+    cfg.queries = [cfg.query.replaceAll("_", " ")];
+    delete cfg.query;
+    writeToFile(configFilePath, JSON.stringify(cfg, null, 2));
 }
 
 function getOrCreateQueryFolder(workingDir, query) {
@@ -70,17 +66,36 @@ function getOrCreateQueryFolder(workingDir, query) {
     return subFolderPath
 }
 
-async function getCFGFromFile() {
-    try {
-        await fs.promises.access(configFilePath, fs.constants.F_OK);
-        const data = await fs.promises.readFile(configFilePath, 'utf8');
-        const cfg = JSON.parse(data);
+/**
+ * Returns the path of an installed Chrome or Chromium, or undefined.
+ * A custom path from --chrome or the config wins over the known paths.
+ */
+function findBrowser(customPath) {
+    const candidates = customPath ? [customPath] : browserPaths()
+    return candidates.find(p => p && fs.existsSync(p))
+}
 
-        return cfg;
-    } catch (err) {
-        console.error('Error:', err);
-        throw err;
+function browserPaths() {
+    if (process.platform === 'darwin') {
+        const apps = [
+            'Google Chrome.app/Contents/MacOS/Google Chrome',
+            'Chromium.app/Contents/MacOS/Chromium',
+        ]
+        return ['/Applications', path.join(os.homedir(), 'Applications')]
+            .flatMap(dir => apps.map(app => path.join(dir, app)))
     }
+    if (process.platform === 'win32') {
+        const exes = [
+            'Google\\Chrome\\Application\\chrome.exe',
+            'Chromium\\Application\\chrome.exe',
+        ]
+        return [process.env['PROGRAMFILES'], process.env['PROGRAMFILES(X86)'], process.env['LOCALAPPDATA']]
+            .filter(Boolean)
+            .flatMap(dir => exes.map(exe => path.join(dir, exe)))
+    }
+    const names = ['google-chrome', 'google-chrome-stable', 'chromium', 'chromium-browser']
+    return (process.env.PATH || '').split(path.delimiter)
+        .flatMap(dir => names.map(name => path.join(dir, name)))
 }
 
 async function waitAndLoadMore(page, getCount, target) {
@@ -106,51 +121,16 @@ function createUrl(query) {
     return `https://duckduckgo.com/?q=${q}&iax=images&ia=images&iaf=size%3AWallpaper`;
 }
 
-async function fixCfg() {
-    return new Promise((resolve, reject) => {
-        fs.access(configFilePath, fs.constants.F_OK, (err) => {
-            if (err) {
-                const rl = readline.createInterface({
-                    input: process.stdin,
-                    output: process.stdout,
-                });
-
-                rl.question('Config file not found. Do you want to generate it? (Y/n): ', (answer) => {
-                    answer = answer.trim().toLowerCase() || 'y';
-                    if (answer === 'y') {
-                        fs.writeFile(configFilePath, '{}', (err) => {
-                            rl.close();
-                            if (err) {
-                                console.error('Error generating the file:', err);
-
-                                reject(err);
-                            } else {
-                                console.log(`File generated successfully at ${configFilePath}`);
-                                resolve();
-                            }
-                        });
-                    } else {
-                        rl.close();
-                        resolve();
-                    }
-                });
-            } else {
-                resolve();
-            }
-        });
-    });
-}
-
-
 module.exports = {
+    configFilePath,
     createUrl,
     wait,
     getCFGFromFile,
     saveToConfig,
+    migrateConfig,
     writeToFile,
     readFile,
-    promptForValue,
-    fixCfg,
     waitAndLoadMore,
-    getOrCreateQueryFolder
+    getOrCreateQueryFolder,
+    findBrowser
 }

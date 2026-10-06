@@ -6,10 +6,19 @@
     "author": "Powerleech",
     "license": "MIT",
     "private": true,
+    "scripts": {
+        "build": "bun build --compile --minify index.js --outfile dist/muralith",
+        "build:all": "yarn build:macos-arm64 && yarn build:macos-x64 && yarn build:linux-x64 && yarn build:windows-x64",
+        "build:macos-arm64": "bun build --compile --minify --target=bun-darwin-arm64 index.js --outfile dist/muralith-macos-arm64",
+        "build:macos-x64": "bun build --compile --minify --target=bun-darwin-x64 index.js --outfile dist/muralith-macos-x64",
+        "build:linux-x64": "bun build --compile --minify --target=bun-linux-x64 index.js --outfile dist/muralith-linux-x64",
+        "build:windows-x64": "bun build --compile --minify --target=bun-windows-x64 index.js --outfile dist/muralith-windows-x64.exe"
+    },
     "dependencies": {
+        "@clack/prompts": "^1.8.1",
         "axios": "^1.20.0",
         "image-size": "^2.0.4",
         "minimist": "^1.2.8",
-        "puppeteer": "^25.12.0"
+        "puppeteer-core": "^25.12.0"
     }
 }

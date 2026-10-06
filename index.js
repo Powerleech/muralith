@@ -1,19 +1,39 @@
 #!/usr/bin/env node
 
 const minimist = require('minimist');
-const puppeteer = require('puppeteer');
+const puppeteer = require('puppeteer-core');
 const axios = require('axios');
 const { imageSize } = require('image-size');
+const prompts = require('@clack/prompts');
 const fs = require('fs');
 const path = require('path');
-const { getCFGFromFile, promptForValue, fixCfg, createUrl, wait, saveToConfig, waitAndLoadMore, getOrCreateQueryFolder } = require('./functions');
+const os = require('os');
+const { configFilePath, getCFGFromFile, saveToConfig, migrateConfig, createUrl, waitAndLoadMore, getOrCreateQueryFolder, findBrowser } = require('./functions');
 
-var query;
+var queries = [];
+const ADD_QUERY = Symbol('add');
 var workingDir;
 var imageFileDir;
 var n;
+var chrome;
 var width = 1920;
 var height = 1080;
+
+const HELP = `Usage: muralith [options]
+
+With no options in a terminal, muralith shows a menu.
+With options, it downloads right away and asks only for missing values.
+
+Options:
+  -q, --query <string>    A query to download. Repeat for more queries.
+                          It is added to the saved queries
+  -n, --number <number>   The number of images to download per query
+  -d, --dir <path>        The working folder. Images go into a subfolder per query
+      --chrome <path>     The path to Chrome or Chromium, if it is not found
+  -h, --help              Display help text
+
+With no --query, it downloads the saved queries.
+Settings are saved in ${configFilePath}`
 
 function shuffleArray(array) {
     for (var i = array.length - 1; i > 0; i--) {
@@ -25,10 +45,10 @@ function shuffleArray(array) {
     return array
 }
 
-async function fetchImageUrls(url, n) {
+async function fetchImageUrls(url, n, executablePath, query) {
     console.log(`finding ${n} images with query ${query}...`)
     const results = [];
-    const browser = await puppeteer.launch({ headless: true });
+    const browser = await puppeteer.launch({ executablePath, headless: true });
     try {
         const page = await browser.newPage();
         // DuckDuckGo shows a bot check to the default "HeadlessChrome" user agent
@@ -91,77 +111,208 @@ async function downloadAndVerifyImage(imageUrl, outputPath) {
     console.log('Saved to ', filePath);
 }
 
-async function setParams() {
-    const configParams = await getCFGFromFile()
-    query = configParams["query"] && configParams["query"].replaceAll("_", " ")
+function isInteractive() {
+    return Boolean(process.stdin.isTTY && process.stdout.isTTY)
+}
+
+function loadParams() {
+    migrateConfig()
+    const configParams = getCFGFromFile()
+    queries = configParams["queries"] || []
     workingDir = configParams["workingDir"];
-    n = configParams["n"]
-    if (query === undefined) {
-        query = await promptForValue(`write search query`, "", "query")
+    n = parseInt(configParams["n"]) || 1
+    chrome = configParams["chrome"]
+}
+
+function exitIfCancel(value) {
+    if (prompts.isCancel(value)) {
+        prompts.cancel('Cancelled')
+        process.exit(0)
     }
-    if (workingDir === undefined) {
-        workingDir = await promptForValue(`write path for workingDir`, "", "workingDir")
+    return value
+}
+
+function hasQuery(query) {
+    return queries.some(q => q.toLowerCase() === query.toLowerCase())
+}
+
+function addQueries(newQueries) {
+    const missing = newQueries.filter(q => !hasQuery(q))
+    if (!missing.length) return
+    queries.push(...missing)
+    saveToConfig(queries, "queries")
+}
+
+async function askQuery() {
+    const query = exitIfCancel(await prompts.text({
+        message: 'Search query',
+        validate: value => {
+            if (!value.trim()) return 'The search query should not be empty'
+            if (hasQuery(value.trim())) return 'This query is already in the list'
+        },
+    })).trim()
+    addQueries([query])
+    return query
+}
+
+async function removeQueries() {
+    if (!queries.length) {
+        prompts.log.info('There are no queries to remove')
+        return
     }
-    if (n === undefined) {
-        n = await promptForValue(`How many images do you wish to save`, "1", "n")
+    const removed = exitIfCancel(await prompts.multiselect({
+        message: 'Queries to remove',
+        options: queries.map(q => ({ value: q, label: q })),
+        required: false,
+    }))
+    queries = queries.filter(q => !removed.includes(q))
+    saveToConfig(queries, "queries")
+}
+
+async function chooseQueries() {
+    const selected = exitIfCancel(await prompts.multiselect({
+        message: 'Queries to download',
+        options: [
+            ...queries.map(q => ({ value: q, label: q })),
+            { value: ADD_QUERY, label: '+ Add new query' },
+        ],
+        initialValues: [...queries],
+        required: true,
+    }))
+    if (!selected.includes(ADD_QUERY)) return selected
+    const query = await askQuery()
+    return [...selected.filter(q => q !== ADD_QUERY), query]
+}
+
+async function askNumber() {
+    const value = exitIfCancel(await prompts.text({
+        message: 'How many images do you wish to save',
+        initialValue: String(n),
+        validate: value => parseInt(value) > 0 ? undefined : 'Write a number above 0',
+    }))
+    n = parseInt(value)
+    saveToConfig(n, "n")
+}
+
+function resolveDir(dir) {
+    return path.resolve(dir.trim().replace(/^~(?=$|[\/\\])/, os.homedir()))
+}
+
+async function askWorkingDir() {
+    workingDir = exitIfCancel(await prompts.text({
+        message: 'Path for the working folder',
+        initialValue: workingDir || '',
+        validate: value => value.trim() ? undefined : 'The working folder should not be empty',
+    }))
+    workingDir = resolveDir(workingDir)
+    saveToConfig(workingDir, "workingDir")
+}
+
+async function askMissingParams() {
+    if (!queries.length) await askQuery()
+    if (!workingDir) await askWorkingDir()
+}
+
+async function download(selected) {
+    const executablePath = findBrowser(chrome)
+    if (!executablePath) {
+        throw new Error(chrome
+            ? `Chrome was not found at ${chrome}. Fix the path with --chrome.`
+            : 'Muralith needs Google Chrome or Chromium. Install Chrome from https://www.google.com/chrome/ and run again, or give the path with --chrome.')
     }
-    n = parseInt(n)
+    for (const query of selected) {
+        console.log(`\n== ${query} ==`)
+        imageFileDir = getOrCreateQueryFolder(workingDir, query)
+        const url = createUrl(query);
+        console.log(`scraping wallpaper urls from the search results of ${url}...`)
+        const imageUrls = await fetchImageUrls(url, n, executablePath, query)
+        await downloadImages(imageUrls, n)
+    }
+}
+
+async function menu() {
+    prompts.intro('muralith')
+    while (true) {
+        prompts.note(`queries: ${queries.join(', ') || '-'}\nimages:  ${n} per query\nfolder:  ${workingDir || '-'}`, 'Settings')
+        const action = exitIfCancel(await prompts.select({
+            message: 'What do you want to do?',
+            options: [
+                { value: 'download', label: 'Download wallpapers' },
+                { value: 'remove', label: 'Remove query' },
+                { value: 'number', label: 'Change number of images' },
+                { value: 'dir', label: 'Change working folder' },
+                { value: 'exit', label: 'Exit' },
+            ],
+        }))
+        if (action === 'exit') break
+        if (action === 'remove') await removeQueries()
+        if (action === 'number') await askNumber()
+        if (action === 'dir') await askWorkingDir()
+        if (action === 'download') {
+            await askMissingParams()
+            const selected = await chooseQueries()
+            try {
+                await download(selected)
+            } catch (err) {
+                prompts.log.error(err.message)
+            }
+        }
+    }
+    prompts.outro('Bye')
 }
 
 async function main() {
-    await setParams()
-    if (!query) {
-        console.error("The Search query should not be empty");
-        process.exit(1);
-    }
-    if (!workingDir) {
-        console.error("The workingDir should not be empty");
-        process.exit(1);
-    }
-    imageFileDir = getOrCreateQueryFolder(workingDir, query)
-
-    const url = createUrl(query);
-    console.log(`scraping wallpaper urls from the search results of ${url}...`)
-    try {
-        const imageUrls = await fetchImageUrls(url, n)
-        await downloadImages(imageUrls, n)
-    } catch (err) {
-        console.error("error: ", err)
-        process.exit(1)
-    }
-    process.exit(0);
-}
-
-if (require.main === module) {
     const args = minimist(process.argv.slice(2), {
-        string: ["q", "n"],
+        string: ["q", "n", "d", "chrome"],
         boolean: ["h"],
         alias: {
             q: 'query',
             h: 'help',
-            n: 'number'
+            n: 'number',
+            d: 'dir'
         },
     });
 
     if (args.help) {
-        console.log("Usage: node index.js  '-q'/'--query'");
-        console.log('Options:');
-        console.log('  -q, --query <string>   Specify the query phrase for which wallpapers to look for.');
-        console.log('  -n, --number <number>   Specify the number of images to download');
-        console.log('  -h, --help              Display help text');
-        process.exit(0);
+        console.log(HELP);
+        return
     }
 
-    (async () => {
-        await fixCfg()
-        if (args.query === "") {
-            await saveToConfig(undefined, "query")
-        } else if (args.query) {
-            await saveToConfig(args.query, "query")
-        }
-        if (args.number && parseInt(args.number) > 0) {
-            await saveToConfig(parseInt(args.number), "n")
-        }
-        await main()
-    })();
+    loadParams()
+    const flagQueries = [].concat(args.query || []).map(q => q.trim()).filter(Boolean)
+    if (args.dir) workingDir = resolveDir(args.dir)
+    if (args.chrome) chrome = args.chrome
+    if (args.number !== undefined) {
+        if (!(parseInt(args.number) > 0)) throw new Error('--number must be a number above 0')
+        n = parseInt(args.number)
+    }
+
+    const hasFlags = ['query', 'number', 'dir', 'chrome'].some(key => args[key] !== undefined)
+    if (!hasFlags && isInteractive()) {
+        await menu()
+        return
+    }
+
+    if (!isInteractive() && ((!queries.length && !flagQueries.length) || !workingDir)) {
+        throw new Error('Missing --query or --dir. Give them as flags, or run muralith in a terminal to set them.')
+    }
+    if (args.chrome && !findBrowser(args.chrome)) throw new Error(`Chrome was not found at ${args.chrome}.`)
+    addQueries(flagQueries)
+    if (isInteractive()) await askMissingParams()
+    if (args.dir) saveToConfig(workingDir, "workingDir")
+    if (args.number !== undefined) saveToConfig(n, "n")
+    if (args.chrome) saveToConfig(chrome, "chrome")
+    const selected = flagQueries.length ? flagQueries
+        : isInteractive() ? await chooseQueries()
+        : queries
+    await download(selected)
+}
+
+if (require.main === module) {
+    main()
+        .then(() => process.exit(0))
+        .catch(err => {
+            console.error(`error: ${err.message}`)
+            process.exit(1)
+        })
 }
