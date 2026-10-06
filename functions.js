@@ -1,4 +1,3 @@
-const cheerio = require("cheerio")
 const fs = require('fs');
 const path = require('path');
 const readline = require('readline')
@@ -28,7 +27,7 @@ function readFile(path, format = "utf8") {
         return fs.readFileSync(path, format);
 
     } catch (err) {
-        console.error(`cout not read file ${path}. Error - ${err}`)
+        console.error(`could not read file ${path}. Error - ${err}`)
     }
 }
 
@@ -60,19 +59,13 @@ async function saveToConfig(value, key) {
     }
 }
 
-async function getOrCreateQueryFolder(workingDir, query) {
+function getOrCreateQueryFolder(workingDir, query) {
     const folderName = query.replaceAll(" ", "_").toLowerCase()
-
     const subFolderPath = path.join(workingDir, folderName);
 
-    if (!fs.existsSync(folderName)) {
-        fs.mkdir(subFolderPath, { recursive: true }, (err) => {
-            if (err) {
-                console.error('An error occurred:', err);
-            } else {
-                console.log(`Subfolder '${subFolderPath}' created successfully.`);
-            }
-        });
+    if (!fs.existsSync(subFolderPath)) {
+        fs.mkdirSync(subFolderPath, { recursive: true });
+        console.log(`Subfolder '${subFolderPath}' created successfully.`);
     }
     return subFolderPath
 }
@@ -90,47 +83,16 @@ async function getCFGFromFile() {
     }
 }
 
-function getHDUrl(pageContent, width, height) {
-    const $ = cheerio.load(pageContent);
-    const detailInnerHtml = $('.c-detail__desc');
-    let imageUrl;
-    detailInnerHtml.each((index, element) => {
-        const fileMeta = $(element).find('.c-detail__filemeta').text();
-        const actualSize = fileMeta;
-        const actualHeight = parseInt(actualSize.split(/\D+/)[1]);
-        if (actualHeight >= height * 0.9) {
-            const href = $(element).find('.js-image-detail-link').attr('href');
-            imageUrl = href
-        } else {
-            throw new Error(`Expected the height to be minimum ${(height * 0.9)}, got ${actualHeight}`)
-        }
-    });
-    if (!imageUrl || imageUrl === undefined) {
-        throw new Error("No hd image url found")
-    }
-    return imageUrl
-}
-
-async function waitAndLoadMore(page, n) {
+async function waitAndLoadMore(page, getCount, target) {
     console.log("making sure images are fully loaded...")
-    if (n <= 20) {
-        await wait(4000)
-    }
-    if (n > 20) {
-        await page.evaluate(() => {
-            window.scrollTo(0, document.body.scrollHeight);
-        });
-        console.log("...")
-        await wait(2200);
-    }
-    if (n > 30) {
+    for (let i = 0; i < 10 && getCount() < target; i++) {
         await page.evaluate(() => {
             window.scrollTo(0, document.body.scrollHeight);
         });
         console.log("...")
         await wait(2000);
     }
-    console.log("page content should be loaded now")
+    console.log(`found ${getCount()} images`)
 }
 
 function wait(milliseconds) {
@@ -139,13 +101,9 @@ function wait(milliseconds) {
     });
 }
 
-function createUrl(query, width, height) {
-    const baseUrl = "https://duckduckgo.com/?t=h_";
-    query = `hd ${query}`
-    const q = new URLSearchParams(query);
-    const suffix = "&iax=images&ia=images&iaf=size%3AWallpaper&";
-    const url = baseUrl + "&q=" + q + suffix;
-    return url;
+function createUrl(query) {
+    const q = encodeURIComponent(`hd ${query}`);
+    return `https://duckduckgo.com/?q=${q}&iax=images&ia=images&iaf=size%3AWallpaper`;
 }
 
 async function fixCfg() {
@@ -188,7 +146,6 @@ module.exports = {
     createUrl,
     wait,
     getCFGFromFile,
-    getHDUrl,
     saveToConfig,
     writeToFile,
     readFile,

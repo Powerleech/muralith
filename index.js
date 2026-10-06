@@ -3,10 +3,10 @@
 const minimist = require('minimist');
 const puppeteer = require('puppeteer');
 const axios = require('axios');
-const sizeOf = require('image-size');
+const { imageSize } = require('image-size');
 const fs = require('fs');
 const path = require('path');
-const { getCFGFromFile, promptForValue, fixCfg, createUrl, wait, getHDUrl, saveToConfig, waitAndLoadMore, getOrCreateQueryFolder } = require('./functions');
+const { getCFGFromFile, promptForValue, fixCfg, createUrl, wait, saveToConfig, waitAndLoadMore, getOrCreateQueryFolder } = require('./functions');
 
 var query;
 var workingDir;
@@ -25,121 +25,117 @@ function shuffleArray(array) {
     return array
 }
 
-async function HasImageClass(page, randomImage) {
-    try {
-        const hasClass = page.evaluate(element => {
-            return element.classList.contains("tile--img__img");
-        }, randomImage);
-
-        return await hasClass;
-    } catch {
-        return false
-    }
-}
-
-async function fetchImageUrl(url, n) {
+async function fetchImageUrls(url, n) {
     console.log(`finding ${n} images with query ${query}...`)
-    let imgUrl = null;
-
-    let nn = 0
+    const results = [];
+    const browser = await puppeteer.launch({ headless: true });
     try {
-        const browser = await puppeteer.launch({ headless: "new" });
         const page = await browser.newPage();
-        await page.goto(url);
-        await waitAndLoadMore(page, n)
-        const imgTags = await page.$$('img');
-        const shuffledImages = shuffleArray(imgTags)
-
-        while (n > nn) {
+        // DuckDuckGo shows a bot check to the default "HeadlessChrome" user agent
+        await page.setUserAgent((await browser.userAgent()).replace('HeadlessChrome', 'Chrome'));
+        await page.setViewport({ width, height });
+        page.on('response', async (response) => {
+            if (!response.url().includes('/i.js')) return;
             try {
-                console.log(`\n${(nn + 1)} of ${n}`)
-                const randomImage = imgTags.pop()
-                const validImage = await HasImageClass(page, randomImage)
-                if (validImage !== true) {
-                    throw new Error("not valid image")
-                }
-                await wait(1000)
-                await randomImage.click();
-                await wait(1000)
-
-                await page.waitForSelector('.detail__inner');
-                const pageContent = await page.content();
-                try {
-                    imgUrl = getHDUrl(pageContent, width, height);
-                    const outputPath = path.join(workingDir, `${query.replaceAll(" ", "_")}`,`${(new Date()).valueOf().toString()}.jpg`);
-                    await downloadAndVerifyImage(imgUrl, outputPath)
-                } catch (err) {
-                    console.log(`retry image ${(nn + 1)} because err: ${err}`)
-                    continue
-                }
-                nn++
-            } catch (err) {
-                console.log("and error happened, retrying...", err)
-                await wait(2000)
-                continue
+                const json = await response.json();
+                results.push(...json.results);
+            } catch {
             }
-        }
+        });
+        await page.goto(url, { waitUntil: 'networkidle2' });
+        await waitAndLoadMore(page, () => results.filter(isBigEnough).length, n * 3)
+    } finally {
         await browser.close();
-    } catch (err) {
-        console.error("error: ", err)
-        process.exit(1)
+    }
+    return shuffleArray(results.filter(isBigEnough)).map(result => result.image)
+}
+
+function isBigEnough(result) {
+    return result.height >= height * 0.9 && result.width >= result.height
+}
+
+async function downloadImages(imageUrls, n) {
+    let nn = 0
+    for (const imageUrl of imageUrls) {
+        if (nn >= n) break
+        console.log(`\n${(nn + 1)} of ${n}`)
+        const outputPath = path.join(imageFileDir, (new Date()).valueOf().toString());
+        try {
+            await downloadAndVerifyImage(imageUrl, outputPath)
+            nn++
+        } catch (err) {
+            console.log(`skipping image because err: ${err.message}`)
+        }
+    }
+    if (nn < n) {
+        console.log(`\nonly found ${nn} of ${n} images`)
     }
 }
+
 async function downloadAndVerifyImage(imageUrl, outputPath) {
     console.log(`downloading from ${imageUrl} ... `)
-    // @ts-ignore
-    const response = await axios.get(imageUrl, { responseType: 'arraybuffer' });
-    if (response.headers['content-type'].startsWith('image')) {
-        // @ts-ignore
-        const dimensions = sizeOf(response.data);
-        if (dimensions.width && dimensions.height) {
-            fs.writeFileSync(outputPath, response.data);
-            console.log('Saved to ', outputPath);
-            return
-        } else {
-            console.log('Invalid image.');
-        }
-    } else {
+    const response = await axios.get(imageUrl, {
+        responseType: 'arraybuffer',
+        timeout: 15000,
+        headers: { 'User-Agent': 'Mozilla/5.0' },
+    });
+    if (!String(response.headers['content-type']).startsWith('image')) {
         throw new Error(`The provided URL does not point to an image. Content: ${response.headers["content-type"]}`);
     }
+    const dimensions = imageSize(new Uint8Array(response.data));
+    if (!dimensions.width || dimensions.height < height * 0.9) {
+        throw new Error(`Expected the height to be minimum ${(height * 0.9)}, got ${dimensions.height}`)
+    }
+    const filePath = `${outputPath}.${dimensions.type}`;
+    fs.writeFileSync(filePath, response.data);
+    console.log('Saved to ', filePath);
 }
+
 async function setParams() {
     const configParams = await getCFGFromFile()
     query = configParams["query"] && configParams["query"].replaceAll("_", " ")
     workingDir = configParams["workingDir"];
     n = configParams["n"]
     if (query === undefined) {
-        query = await promptForValue(`write search query (${query}): `, query, "query")
+        query = await promptForValue(`write search query`, "", "query")
     }
     if (workingDir === undefined) {
-        workingDir = await promptForValue(`write path for workingDir (${workingDir}): `, workingDir, "workingDir")
+        workingDir = await promptForValue(`write path for workingDir`, "", "workingDir")
     }
     if (n === undefined) {
-        n = await promptForValue(`How many images do you wish to save (${n}): `, 1, "n")
+        n = await promptForValue(`How many images do you wish to save`, "1", "n")
     }
-    return
+    n = parseInt(n)
 }
+
 async function main() {
-    await fixCfg()
     await setParams()
-    imageFileDir = getOrCreateQueryFolder(workingDir, query)
-
-    const url = createUrl(query, width, height);
-
-    if (query === undefined || query === "") {
+    if (!query) {
         console.error("The Search query should not be empty");
         process.exit(1);
     }
+    if (!workingDir) {
+        console.error("The workingDir should not be empty");
+        process.exit(1);
+    }
+    imageFileDir = getOrCreateQueryFolder(workingDir, query)
+
+    const url = createUrl(query);
     console.log(`scraping wallpaper urls from the search results of ${url}...`)
-    await fetchImageUrl(url, n)
+    try {
+        const imageUrls = await fetchImageUrls(url, n)
+        await downloadImages(imageUrls, n)
+    } catch (err) {
+        console.error("error: ", err)
+        process.exit(1)
+    }
     process.exit(0);
 }
 
 if (require.main === module) {
-    let cleanWorkingDir = false
     const args = minimist(process.argv.slice(2), {
         string: ["q", "n"],
-
+        boolean: ["h"],
         alias: {
             q: 'query',
             h: 'help',
@@ -156,13 +152,16 @@ if (require.main === module) {
         process.exit(0);
     }
 
-    if (args.query === "") {
-        saveToConfig(undefined, "query")
-    } else if (args.query) {
-        saveToConfig(args.query, "query")
-    }
-    if (args.number && parseInt(args.number) > 0) {
-        saveToConfig(args.number, "n")
-    }
-    (async () =>  main())();
+    (async () => {
+        await fixCfg()
+        if (args.query === "") {
+            await saveToConfig(undefined, "query")
+        } else if (args.query) {
+            await saveToConfig(args.query, "query")
+        }
+        if (args.number && parseInt(args.number) > 0) {
+            await saveToConfig(parseInt(args.number), "n")
+        }
+        await main()
+    })();
 }
