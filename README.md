@@ -40,6 +40,9 @@ With no `-q`, a terminal run asks which saved queries to download. A run without
 
 Settings are saved in `~/.muralith.json`, so the next run uses them again.
 Images go into a subfolder per query, e.g. `<workingDir>/scifi_art/`.
+On macOS, after a download in a terminal, muralith asks to refresh a flat folder next to the working folder, e.g. `~/Pictures/wallpapers_all`.
+It hard links all `.jpg`, `.png` and `.heic` images from the query subfolders into it, so the images use no extra disk space.
+macOS does not look in subfolders, so in System Settings > Wallpaper choose "Add Folder..." and select the flat folder.
 When it does not run in a terminal (cron, scripts), it does not ask. It fails if there are no queries or no `--dir`.
 
 query examples:

@@ -8,7 +8,7 @@ const prompts = require('@clack/prompts');
 const fs = require('fs');
 const path = require('path');
 const os = require('os');
-const { configFilePath, getCFGFromFile, saveToConfig, migrateConfig, createUrl, waitAndLoadMore, getOrCreateQueryFolder, findBrowser } = require('./functions');
+const { configFilePath, getCFGFromFile, saveToConfig, migrateConfig, createUrl, waitAndLoadMore, getOrCreateQueryFolder, findBrowser, refreshFlatFolder } = require('./functions');
 
 var queries = [];
 const ADD_QUERY = Symbol('add');
@@ -228,6 +228,17 @@ async function download(selected) {
         const imageUrls = await fetchImageUrls(url, n, executablePath, query)
         await downloadImages(imageUrls, n)
     }
+    if (process.platform === 'darwin' && isInteractive()) await askRefreshFlatFolder()
+}
+
+async function askRefreshFlatFolder() {
+    const refresh = exitIfCancel(await prompts.confirm({
+        message: 'Refresh the flat wallpaper folder for macOS?',
+        initialValue: true,
+    }))
+    if (!refresh) return
+    const { flatDir, count } = refreshFlatFolder(workingDir)
+    prompts.note(`${count} images linked into ${flatDir}\n\nIn System Settings > Wallpaper, choose "Add Folder..."\nand select this folder to rotate the wallpapers.`, 'Flat folder')
 }
 
 async function menu() {

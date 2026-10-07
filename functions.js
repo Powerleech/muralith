@@ -98,6 +98,31 @@ function browserPaths() {
         .flatMap(dir => names.map(name => path.join(dir, name)))
 }
 
+/**
+ * Hard links every image under workingDir into one flat folder next to it, e.g. `wallpapers_all`.
+ * macOS wallpaper settings do not look in subfolders, so they need this flat folder.
+ */
+function refreshFlatFolder(workingDir) {
+    const flatDir = `${workingDir.replace(/[\/\\]+$/, '')}_all`
+    fs.mkdirSync(flatDir, { recursive: true })
+    let count = 0
+    for (const file of findImages(workingDir, flatDir)) {
+        const target = path.join(flatDir, path.basename(file))
+        fs.rmSync(target, { force: true })
+        fs.linkSync(file, target)
+        count++
+    }
+    return { flatDir, count }
+}
+
+function findImages(dir, skipDir) {
+    return fs.readdirSync(dir, { withFileTypes: true }).flatMap(entry => {
+        const entryPath = path.join(dir, entry.name)
+        if (entry.isDirectory()) return entryPath === skipDir ? [] : findImages(entryPath, skipDir)
+        return entry.isFile() && /\.(jpe?g|png|heic)$/i.test(entry.name) ? [entryPath] : []
+    })
+}
+
 async function waitAndLoadMore(page, getCount, target) {
     console.log("making sure images are fully loaded...")
     for (let i = 0; i < 10 && getCount() < target; i++) {
@@ -132,5 +157,6 @@ module.exports = {
     readFile,
     waitAndLoadMore,
     getOrCreateQueryFolder,
-    findBrowser
+    findBrowser,
+    refreshFlatFolder
 }
